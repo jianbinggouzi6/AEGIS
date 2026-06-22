@@ -2,7 +2,8 @@
 
 AEGIS keeps both reference implementations unchanged and reuses the official
 Dense-AE repository's DCASE2020/2024 loader. Stage 1 is a 2D convolutional
-autoencoder over log-Mel windows; stage 2 adds learned frequency-axis attention.
+autoencoder over log-Mel windows; stage 2 adds learned frequency-axis attention;
+stage 3 adds self-supervised transformation classification and score fusion.
 
 ## Setup
 
@@ -39,6 +40,32 @@ bin, and uses local frequency context to reweight encoder features:
 python -m aegis.run --dataset DCASE2020T2 --stage 2 \
   --machine-types fan --epochs 1 --max-train-batches 2 --max-test-files 10
 ```
+
+## Stage 3
+
+The auxiliary head identifies three labels generated from the input itself:
+identity, time reversal, and frequency reversal. This stays useful on DCASE2024
+where development machine types have only one section. Its cross-entropy score
+is standardized on normal training data and fused with standardized
+reconstruction error; `self_supervised.fusion_weight` controls its contribution.
+
+```bash
+python -m aegis.run --dataset DCASE2020T2 --stage 3 \
+  --machine-types fan --epochs 1 --max-train-batches 2 --max-test-files 10
+```
+
+## Comparison and ablation tables
+
+After running all stages, normalize the untouched Dense-AE and STgram-MFN
+results to the schema in `reference_results.example.csv`, then generate both
+final tables:
+
+```bash
+python -m aegis.report --reference-csv path/to/baseline_results.csv
+```
+
+This writes `comparison.csv` (methods across both datasets) and `ablation.csv`
+(stages 1–3) under `aegis/outputs/reports/`.
 
 Outputs are written below `aegis/outputs/<dataset>/stage1/`, including model
 checkpoints, per-file anomaly scores, section metrics, and a cross-machine

@@ -41,9 +41,20 @@ class ScoreCalibration:
     threshold: float
     mean: float
     std: float
+    classification_mean: float = 0.0
+    classification_std: float = 1.0
+    fusion_weight: float = 0.0
 
     def normalize(self, score: float) -> float:
         return (score - self.mean) / max(self.std, 1e-12)
+
+    def fuse(self, reconstruction: float, classification: float = 0.0) -> float:
+        if self.fusion_weight == 0.0:
+            return reconstruction
+        classification_z = (classification - self.classification_mean) / max(
+            self.classification_std, 1e-12
+        )
+        return self.normalize(reconstruction) + self.fusion_weight * classification_z
 
 
 class Trainer:
@@ -55,11 +66,15 @@ class Trainer:
         device: torch.device,
         learning_rate: float = 1e-3,
         weight_decay: float = 1e-5,
+        ssl_loss_weight: float = 0.2,
+        fusion_weight: float = 0.3,
     ) -> None:
         self.model = model.to(device)
         self.n_mels = n_mels
         self.frames = frames
         self.device = device
+        self.ssl_loss_weight = ssl_loss_weight
+        self.fusion_weight = fusion_weight
         self.optimizer = torch.optim.Adam(
             self.model.parameters(),
             lr=learning_rate,
@@ -69,6 +84,39 @@ class Trainer:
     def _images(self, batch: Any) -> torch.Tensor:
         windows = batch[0].to(self.device, dtype=torch.float32)
         return flat_windows_to_images(windows, self.n_mels, self.frames)
+
+    def _ssl_views(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Create balanced, automatically labelled transformation views."""
+        if self.model.num_classes != 3:
+            raise ValueError("the current SSL recipe requires num_classes=3")
+        batch_size = images.shape[0]
+        views = torch.cat(
+            (images, torch.flip(images, dims=(-1,)), torch.flip(images, dims=(-2,))),
+            dim=0,
+        )
+        targets = torch.cat(
+            [
+                torch.full((batch_size,), label, device=self.device, dtype=torch.long)
+                for label in range(3)
+            ]
+        )
+        return views, targets
+
+    def _losses(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if self.model.stage < 3:
+            reconstruction, _ = self.model(images)
+            reconstruction_loss = F.mse_loss(reconstruction, images)
+            zero = reconstruction_loss.new_zeros(())
+            return reconstruction_loss, zero, reconstruction_loss
+
+        views, targets = self._ssl_views(images)
+        reconstruction, logits = self.model(views)
+        if logits is None:
+            raise RuntimeError("stage-3 model did not return classification logits")
+        reconstruction_loss = F.mse_loss(reconstruction, views)
+        classification_loss = F.cross_entropy(logits, targets)
+        total = reconstruction_loss + self.ssl_loss_weight * classification_loss
+        return reconstruction_loss, classification_loss, total
 
     def train_epoch(
         self,
@@ -81,8 +129,7 @@ class Trainer:
             if max_batches is not None and batch_index >= max_batches:
                 break
             images = self._images(batch)
-            reconstruction, _ = self.model(images)
-            loss = F.mse_loss(reconstruction, images)
+            _, _, loss = self._losses(images)
             self.optimizer.zero_grad(set_to_none=True)
             loss.backward()
             self.optimizer.step()
@@ -103,8 +150,8 @@ class Trainer:
             if max_batches is not None and batch_index >= max_batches:
                 break
             images = self._images(batch)
-            reconstruction, _ = self.model(images)
-            losses.append(float(F.mse_loss(reconstruction, images).cpu()))
+            _, _, loss = self._losses(images)
+            losses.append(float(loss.cpu()))
         return float(np.mean(losses)) if losses else float("nan")
 
     @torch.no_grad()
@@ -117,7 +164,8 @@ class Trainer:
         if not 0.0 < quantile < 1.0:
             raise ValueError("threshold quantile must be between 0 and 1")
         self.model.eval()
-        scores: list[float] = []
+        reconstruction_scores: list[float] = []
+        classification_scores: list[float] = []
         for batch_index, batch in enumerate(loader):
             if max_batches is not None and batch_index >= max_batches:
                 break
@@ -126,38 +174,83 @@ class Trainer:
             per_window = F.mse_loss(reconstruction, images, reduction="none").mean(
                 dim=(1, 2, 3)
             )
-            scores.extend(per_window.cpu().tolist())
-        if not scores:
+            reconstruction_scores.extend(per_window.cpu().tolist())
+            if self.model.stage >= 3:
+                views, targets = self._ssl_views(images)
+                _, logits = self.model(views)
+                if logits is None:
+                    raise RuntimeError("stage-3 model did not return logits")
+                per_view = F.cross_entropy(logits, targets, reduction="none")
+                per_window_classification = per_view.reshape(3, images.shape[0]).mean(0)
+                classification_scores.extend(per_window_classification.cpu().tolist())
+        if not reconstruction_scores:
             raise RuntimeError("calibration loader produced no samples")
-        values = np.asarray(scores, dtype=np.float64)
+        values = np.asarray(reconstruction_scores, dtype=np.float64)
+        if self.model.stage < 3:
+            return ScoreCalibration(
+                threshold=float(np.quantile(values, quantile)),
+                mean=float(values.mean()),
+                std=float(values.std()),
+            )
+
+        classification_values = np.asarray(classification_scores, dtype=np.float64)
+        reconstruction_z = (values - values.mean()) / max(values.std(), 1e-12)
+        classification_z = (
+            classification_values - classification_values.mean()
+        ) / max(classification_values.std(), 1e-12)
+        fused = reconstruction_z + self.fusion_weight * classification_z
         return ScoreCalibration(
-            threshold=float(np.quantile(values, quantile)),
+            threshold=float(np.quantile(fused, quantile)),
             mean=float(values.mean()),
             std=float(values.std()),
+            classification_mean=float(classification_values.mean()),
+            classification_std=float(classification_values.std()),
+            fusion_weight=self.fusion_weight,
         )
 
     @torch.no_grad()
     def score_file_loader(
         self,
         loader: Iterable[Any],
+        calibration: ScoreCalibration,
         max_files: int | None = None,
     ) -> list[dict[str, Any]]:
         """Score baseline test batches (one complete WAV file per batch)."""
         self.model.eval()
         rows: list[dict[str, Any]] = []
-        for file_index, batch in enumerate(loader):
-            if max_files is not None and file_index >= max_files:
-                break
+        label_counts = {0: 0, 1: 0}
+        for batch in loader:
+            label = int(batch[1][0].item())
+            if max_files is not None and label in label_counts:
+                # Official loaders order normal files before anomalies. Keep a
+                # balanced subset so a smoke-test limit can still compute AUC.
+                quota = (max_files + (1 if label == 0 else 0)) // 2
+                if label_counts[label] >= quota:
+                    continue
             images = self._images(batch)
             reconstruction, _ = self.model(images)
-            score = F.mse_loss(reconstruction, images).item()
+            reconstruction_score = F.mse_loss(reconstruction, images).item()
+            classification_score = 0.0
+            if self.model.stage >= 3:
+                views, targets = self._ssl_views(images)
+                _, logits = self.model(views)
+                if logits is None:
+                    raise RuntimeError("stage-3 model did not return logits")
+                classification_score = float(F.cross_entropy(logits, targets).item())
+            score = calibration.fuse(reconstruction_score, classification_score)
             rows.append(
                 {
                     "filename": str(batch[3][0]),
-                    "label": int(batch[1][0].item()),
+                    "label": label,
+                    "reconstruction_score": float(reconstruction_score),
+                    "classification_score": classification_score,
                     "score": float(score),
                 }
             )
+            if label in label_counts:
+                label_counts[label] += 1
+            if max_files is not None and len(rows) >= max_files:
+                break
         return rows
 
 
@@ -193,9 +286,10 @@ def run_machine(
         config["feature"],
         config["training"],
     )
+    ssl = config["self_supervised"]
     model = AEGISModel(
         stage=stage,
-        num_classes=data.num_classes,
+        num_classes=int(ssl["num_classes"]),
         **config["model"],
     )
     trainer = Trainer(
@@ -205,6 +299,8 @@ def run_machine(
         device=device,
         learning_rate=float(config["training"]["learning_rate"]),
         weight_decay=float(config["training"]["weight_decay"]),
+        ssl_loss_weight=float(ssl["loss_weight"]),
+        fusion_weight=float(ssl["fusion_weight"]),
     )
 
     history: list[dict[str, float | int]] = []
@@ -231,7 +327,7 @@ def run_machine(
         "stage": stage,
         "dataset": dataset_name,
         "machine_type": machine_type,
-        "num_classes": data.num_classes,
+        "num_classes": model.num_classes,
         "feature": config["feature"],
         "model": config["model"],
         "calibration": calibration.__dict__,
@@ -244,7 +340,7 @@ def run_machine(
     all_rows: list[dict[str, Any]] = []
     section_metrics: list[dict[str, Any]] = []
     for section_id, test_loader in zip(data.section_id_list, data.test_loader):
-        rows = trainer.score_file_loader(test_loader, max_test_files)
+        rows = trainer.score_file_loader(test_loader, calibration, max_test_files)
         for row in rows:
             row["section"] = section_id
             row["decision"] = int(row["score"] > calibration.threshold)
@@ -277,4 +373,3 @@ def run_machine(
     }
     _write_csv(run_dir / "summary.csv", [summary])
     return summary
-

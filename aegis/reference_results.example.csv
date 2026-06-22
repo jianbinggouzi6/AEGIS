@@ -1,0 +1,6 @@
+dataset,method,machine_type,auc,pauc,f1
+DCASE2020T2,Dense-AE,fan,0.0,0.0,0.0
+DCASE2020T2,STgram-MFN,fan,0.0,0.0,0.0
+DCASE2024T2,Dense-AE,bearing,0.0,0.0,0.0
+DCASE2024T2,STgram-MFN,bearing,0.0,0.0,0.0
+

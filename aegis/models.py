@@ -67,7 +67,8 @@ class AEGISModel(nn.Module):
     The model accepts any practical log-Mel size. The decoder is resized back
     to the exact input shape, avoiding brittle assumptions about divisibility
     by the three stride-2 encoder blocks. Stage 2 inserts frequency-axis
-    attention after the first encoder block.
+    attention after the first encoder block. Stage 3 adds a self-supervised
+    transformation classifier over globally pooled latent features.
     """
 
     def __init__(
@@ -78,8 +79,8 @@ class AEGISModel(nn.Module):
         latent_channels: int = 64,
     ) -> None:
         super().__init__()
-        if stage not in (1, 2):
-            raise ValueError("stage must be 1 or 2")
+        if stage not in (1, 2, 3):
+            raise ValueError("stage must be 1, 2, or 3")
         if base_channels < 1 or latent_channels < 1:
             raise ValueError("channel counts must be positive")
 
@@ -98,12 +99,22 @@ class AEGISModel(nn.Module):
             DeconvBlock(base_channels * 2, base_channels),
             nn.ConvTranspose2d(base_channels, 1, kernel_size=4, stride=2, padding=1),
         )
+        self.classifier = None
+        if stage >= 3:
+            if num_classes < 2:
+                raise ValueError("stage 3 needs at least two self-supervised classes")
+            self.classifier = nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                nn.Flatten(),
+                nn.Linear(latent_channels, num_classes),
+            )
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, None]:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
         if x.ndim != 4 or x.shape[1] != 1:
             raise ValueError(f"expected [batch, 1, mel, time], got {tuple(x.shape)}")
         target_size = x.shape[-2:]
         latent = self.encoder(x)
+        logits = self.classifier(latent) if self.classifier is not None else None
         reconstruction = self.decoder(latent)
         if reconstruction.shape[-2:] != target_size:
             reconstruction = F.interpolate(
@@ -112,4 +123,4 @@ class AEGISModel(nn.Module):
                 mode="bilinear",
                 align_corners=False,
             )
-        return reconstruction, None
+        return reconstruction, logits

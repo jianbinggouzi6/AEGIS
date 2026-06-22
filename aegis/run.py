@@ -27,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=str(Path(__file__).with_name("config.yaml")))
     parser.add_argument("--dataset", required=True, choices=["DCASE2020T2", "DCASE2024T2"])
-    parser.add_argument("--stage", type=int, default=1, choices=[1, 2])
+    parser.add_argument("--stage", type=int, default=1, choices=[1, 2, 3])
     parser.add_argument("--machine-types", nargs="+", help="override config machine list")
     parser.add_argument("--epochs", type=int)
     parser.add_argument("--batch-size", type=int)

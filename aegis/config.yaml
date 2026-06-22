@@ -20,6 +20,11 @@ model:
   base_channels: 16
   latent_channels: 64
 
+self_supervised:
+  num_classes: 3
+  loss_weight: 0.2
+  fusion_weight: 0.3
+
 training:
   batch_size: 128
   epochs: 50
@@ -39,4 +44,3 @@ datasets:
   # --machine-types to select an exact six-machine experimental subset.
   DCASE2024T2:
     machine_types: [bearing, fan, gearbox, slider, valve, ToyCar, ToyTrain]
-
