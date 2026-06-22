@@ -1,8 +1,8 @@
 # AEGIS
 
 AEGIS keeps both reference implementations unchanged and reuses the official
-Dense-AE repository's DCASE2020/2024 loader. Its first stage is a 2D
-convolutional autoencoder over log-Mel windows.
+Dense-AE repository's DCASE2020/2024 loader. Stage 1 is a 2D convolutional
+autoencoder over log-Mel windows; stage 2 adds learned frequency-axis attention.
 
 ## Setup
 
@@ -30,6 +30,16 @@ python -m aegis.run --dataset DCASE2020T2 --stage 1
 python -m aegis.run --dataset DCASE2024T2 --stage 1
 ```
 
+## Stage 2
+
+The stage-2 attention gate pools over channel and time, preserves every Mel
+bin, and uses local frequency context to reweight encoder features:
+
+```bash
+python -m aegis.run --dataset DCASE2020T2 --stage 2 \
+  --machine-types fan --epochs 1 --max-train-batches 2 --max-test-files 10
+```
+
 Outputs are written below `aegis/outputs/<dataset>/stage1/`, including model
 checkpoints, per-file anomaly scores, section metrics, and a cross-machine
 summary. Use `--machine-types` to select a fixed six-machine subset for an
@@ -38,5 +48,5 @@ experiment; the official DCASE2024 development map currently contains seven.
 Run the dependency-light model smoke test with:
 
 ```bash
-python -m unittest aegis.tests.test_stage1_smoke -v
+python -m unittest discover -s aegis/tests -p "test_*_smoke.py" -v
 ```
