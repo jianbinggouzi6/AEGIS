@@ -1,208 +1,215 @@
-# AEGIS — Acoustic Equipment anomaly detection with Guided Iterative Spectral attention
+# AEGIS — 工业设备声学异常检测
 
-AEGIS is a research codebase for industrial sound anomaly detection built on top of
-the [DCASE Task 2](https://dcase.community/challenge2023/task2-unsupervised-anomalous-sound-detection-for-machine-condition-monitoring) benchmark.  
-All model code lives in `aegis/`; two reference implementations are kept **unmodified** as git submodules.
+基于 DCASE Task 2 基准的工业设备声音异常检测研究框架。  
+所有模型代码位于 `aegis/`，两个对照组仓库作为 git submodule **保持原样不动**。
 
-## Repository layout
+---
+
+## 仓库结构
 
 ```
 AEGIS/
-├── aegis/                          # AEGIS source code (this is the only code you touch)
-│   ├── models.py                   # Conv-AE + Freq-Attn + Section Classifier
-│   ├── engine.py                   # Trainer, per-section calibration, scoring
-│   ├── train.py                    # Entry point: python -m aegis.train
-│   ├── data.py                     # Adapter around the unmodified baseline loader
-│   ├── metrics.py                  # AUC / pAUC / F1 (mirrors baseline evaluation)
-│   ├── report.py                   # Cross-dataset comparison + ablation table builder
+├── aegis/                              # AEGIS 核心实现
+│   ├── models.py                       # Conv-AE + 频率注意力 + 分类头
+│   ├── engine.py                       # 训练器、逐 section 校准、评分
+│   ├── train.py                        # 训练入口
+│   ├── data.py                         # 基线 loader 适配器
+│   ├── metrics.py                      # AUC / pAUC / F1
+│   ├── report.py                       # 跨数据集对比表 + 消融表生成
 │   └── requirements.txt
-├── configs/                        # 6 ablation YAML files (3 settings × 2 datasets)
-│   ├── exp1_convae.yaml
-│   ├── exp2_convae_freqattn.yaml
-│   ├── exp3_full_aegis.yaml
-│   ├── exp1_convae_b.yaml
-│   ├── exp2_convae_freqattn_b.yaml
-│   └── exp3_full_aegis_b.yaml
-├── run_all.sh                      # Run all 6 experiments sequentially
-├── dcase2023_task2_baseline_ae/    # Official Dense-AE (git submodule, unmodified)
-├── STgram-MFN/                     # STgram-MFN strong baseline (git submodule, unmodified)
-├── CODEX.md                        # Research design notes
-└── README.md                       # This file
+├── configs/                            # 6 个消融实验 YAML 配置
+│   ├── exp1_convae.yaml                # 基座 Conv-AE（数据集 A）
+│   ├── exp2_convae_freqattn.yaml       # +频率注意力（数据集 A）
+│   ├── exp3_full_aegis.yaml            # 完整 AEGIS（数据集 A）
+│   ├── exp1_convae_b.yaml              # 基座 Conv-AE（数据集 B）
+│   ├── exp2_convae_freqattn_b.yaml     # +频率注意力（数据集 B）
+│   └── exp3_full_aegis_b.yaml          # 完整 AEGIS（数据集 B）
+├── run_all.sh                          # 一键顺序运行全部 6 个实验
+├── dcase2023_task2_baseline_ae/        # 官方 Dense-AE（submodule，不改）
+├── STgram-MFN/                         # STgram-MFN 强基线（submodule，不改）
+├── CODEX.md                            # 实验设计说明
+└── README.md
 ```
 
 ---
 
-## 1  Environment
+## 环境安装
 
 ```bash
-# Clone with submodules
-git clone --recurse-submodules git@github.com:<user>/AEGIS.git
+# 克隆仓库（含两个对照组 submodule）
+git clone --recurse-submodules git@github.com:<你的用户名>/AEGIS.git
 cd AEGIS
 
-# Install dependencies
+# 安装依赖
 pip install -r aegis/requirements.txt
 ```
 
 ---
 
-## 2  Data preparation
+## 数据集准备
 
-Place the **development** data inside the baseline repo's `data/` directory,
-following the path convention the official loader expects:
+将开发集数据放到基线仓库的 `data/` 目录下，目录结构如下：
 
 ```
 dcase2023_task2_baseline_ae/data/
-├── dcase2020t2/dev_data/raw/<machine_type>/train/   ← Dataset A training WAVs
-│                                           test/
-├── dcase2024t2/dev_data/raw/<machine_type>/train/   ← Dataset B training WAVs
-│                                           test/
+├── dcase2020t2/dev_data/raw/<机器类型>/train/   ← 数据集 A 训练音频
+│                                        test/
+└── dcase2024t2/dev_data/raw/<机器类型>/train/   ← 数据集 B 训练音频
+                                         test/
 ```
 
-The loader caches mel features as `.pickle` files on first run.
+loader 首次运行时会自动将 mel 特征缓存为 `.pickle` 文件，之后复用。
 
-**Dataset A** — DCASE2020 Task 2  
-Machines: `fan  pump  slider  valve  ToyCar  ToyConveyor`
+**数据集 A** — DCASE2020 Task 2  
+机器类型：`fan  pump  slider  valve  ToyCar  ToyConveyor`
 
-**Dataset B** — DCASE2024 Task 2  
-Machines: `bearing  fan  gearbox  slider  valve  ToyCar  ToyTrain`
+**数据集 B** — DCASE2024 Task 2  
+机器类型：`bearing  fan  gearbox  slider  valve  ToyCar  ToyTrain`
 
-> **Note:** DCASE2024T2 dev data provides only one section per machine,
-> so `classifier_fusion` is automatically disabled with a warning for Dataset B experiments.
+> **注意：** DCASE2024T2 开发集每台机器只有 1 个 section，
+> 因此数据集 B 的实验中 `classifier_fusion` 会自动关闭并打印警告。
 
 ---
 
-## 3  Model switches (ablation dimensions)
+## 模型开关说明
 
-All three boolean flags in `model:` of the YAML file control which components are active:
+YAML 配置文件中 `model:` 部分的三个布尔开关对应消融表的三个维度：
 
-| Switch | Key in YAML | What it does |
-|--------|-------------|--------------|
-| `conv_ae` | `model.conv_ae` | 2D Conv-AE backbone — always `true` |
-| `freq_attention` | `model.freq_attention` | FreqAxisAttention gate after the first encoder block |
-| `classifier_fusion` | `model.classifier_fusion` | Section-ID classifier head + z-score fusion |
+| 开关 | YAML 键 | 作用 |
+|------|---------|------|
+| `conv_ae` | `model.conv_ae` | 2D 卷积自编码器主干，始终为 `true` |
+| `freq_attention` | `model.freq_attention` | 频率轴注意力（在第一个编码块后插入） |
+| `classifier_fusion` | `model.classifier_fusion` | Section-ID 分类头 + 异常分融合 |
 
-Additional tunables in `classifier:`:
+分类相关参数（`classifier:` 节）：
 
-| Key | Default | Meaning |
-|-----|---------|---------|
-| `num_classes` | `0` (auto) | Number of sections; `0` detects from data |
-| `loss_type` | `"ce"` | `"ce"` for cross-entropy, `"arcface"` for ArcFace |
-| `lambda_cls` | `0.2` | λ — weight of classifier loss in joint training |
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `num_classes` | `0`（自动） | section 数量，`0` 表示从数据自动检测 |
+| `loss_type` | `"ce"` | `"ce"` 交叉熵 / `"arcface"` ArcFace 角度 margin |
+| `lambda_cls` | `0.2` | λ，联合 loss 中分类损失的权重 |
 
-And in `fusion:`:
+融合参数（`fusion:` 节）：
 
-| Key | Default | Meaning |
-|-----|---------|---------|
-| `weight` | `0.3` | w — `fused = z_recon + w * z_cls` |
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `weight` | `0.3` | w，融合公式：`异常分 = z_重构 + w × z_分类` |
 
-Staged training (train AE first, then fine-tune classifier):
+分阶段训练开关（`training:` 节）：
 
 ```yaml
 training:
-  staged:     true
-  ae_epochs:  30    # AE-only phase
-  clf_epochs: 20    # classifier fine-tuning phase (encoder frozen)
+  staged:     true   # 先训 AE，再微调分类头
+  ae_epochs:  30     # AE 单独训练轮数
+  clf_epochs: 20     # 分类头微调轮数（编码器/解码器冻结）
 ```
 
 ---
 
-## 4  Running experiments
+## 消融实验设计
 
-### Single experiment
+六个配置文件实现**叠加式消融**——后一个在前一个基础上只多开一个开关，
+其余超参（epoch、batch size、lr、λ、w、随机种子）完全一致，保证可比性：
+
+| 配置文件 | 数据集 | Conv-AE | 频率注意力 | 分类融合 |
+|----------|--------|:-------:|:---------:|:-------:|
+| `exp1_convae.yaml` | A | ✓ | ✗ | ✗ |
+| `exp2_convae_freqattn.yaml` | A | ✓ | ✓ | ✗ |
+| `exp3_full_aegis.yaml` | A | ✓ | ✓ | ✓ |
+| `exp1_convae_b.yaml` | B | ✓ | ✗ | ✗ |
+| `exp2_convae_freqattn_b.yaml` | B | ✓ | ✓ | ✗ |
+| `exp3_full_aegis_b.yaml` | B | ✓ | ✓ | ✓* |
+
+*数据集 B 每机器仅 1 个 section，分类融合自动关闭。
+
+---
+
+## 运行实验
+
+### 单个实验
 
 ```bash
 python -m aegis.train --config configs/exp3_full_aegis.yaml
 ```
 
-Override any setting from the command line:
+命令行覆盖参数：
 
 ```bash
 python -m aegis.train --config configs/exp3_full_aegis.yaml \
-    --device cuda --epochs 100 --batch-size 256
+    --device cuda \
+    --epochs 100 \
+    --batch-size 256
 ```
 
-Restrict to a subset of machines:
+只跑部分机器类型（调试用）：
 
 ```bash
 python -m aegis.train --config configs/exp1_convae.yaml \
     --machine-types fan pump
 ```
 
-### Full ablation suite (all 6 configs)
+### 一键运行全部 6 个实验
 
 ```bash
-bash run_all.sh                    # CPU
-bash run_all.sh --device cuda      # GPU
+bash run_all.sh               # CPU
+bash run_all.sh --device cuda  # GPU
 ```
-
-The six commands and their ablation-table rows:
-
-| Shell step | Config | Dataset | Conv-AE | Freq-Attn | Cls-Fusion |
-|-----------|--------|---------|:-------:|:---------:|:----------:|
-| A-1 | `exp1_convae.yaml` | A | ✓ | ✗ | ✗ |
-| A-2 | `exp2_convae_freqattn.yaml` | A | ✓ | ✓ | ✗ |
-| A-3 | `exp3_full_aegis.yaml` | A | ✓ | ✓ | ✓ |
-| B-1 | `exp1_convae_b.yaml` | B | ✓ | ✗ | ✗ |
-| B-2 | `exp2_convae_freqattn_b.yaml` | B | ✓ | ✓ | ✗ |
-| B-3 | `exp3_full_aegis_b.yaml` | B | ✓ | ✓ | ✓ |
 
 ---
 
-## 5  Outputs
+## 输出目录结构
 
-Each run writes to `outputs/<dataset>/<experiment_name>/`:
+每次运行结果写入 `outputs/<数据集>/<实验名>/`：
 
 ```
 outputs/DCASE2020T2/exp3_full_aegis/
-├── config.yaml                        ← full resolved config (reproducibility)
-├── result.csv                         ← per-machine AUC/pAUC/F1 + arithmetic mean
-└── <machine_type>/
-    ├── model.pt                       ← checkpoint
-    ├── history.json                   ← epoch-level train/valid losses
-    ├── anomaly_score_section_<id>.csv ← per-file scores
-    ├── section_metrics.csv            ← per-section AUC/pAUC/F1
-    └── summary.csv                    ← machine-level aggregate
+├── config.yaml                        ← 完整解析后的配置（可复现）
+├── result.csv                         ← 各机器 AUC/pAUC/F1 + 算术均值
+└── <机器类型>/
+    ├── model.pt                       ← 模型权重
+    ├── history.json                   ← 每轮训练/验证损失
+    ├── anomaly_score_section_<id>.csv ← 逐文件异常分
+    ├── section_metrics.csv            ← 逐 section AUC/pAUC/F1
+    └── summary.csv                    ← 该机器类型汇总
 ```
 
-`result.csv` columns: `dataset, machine_type, experiment, auc, pauc, precision, recall, f1`  
-The last row is the **arithmetic mean** across all machines — paste this row directly into the paper table.
+`result.csv` 列：`dataset, machine_type, experiment, auc, pauc, precision, recall, f1`  
+最后一行为各机器**算术均值**，可直接填入论文对比表。
 
 ---
 
-## 6  Comparison and ablation tables
+## 生成对比表与消融表
 
-After running all experiments and collecting baseline results, generate the
-final comparison and ablation CSVs:
+整理好两个对照组的跑分（格式见 `aegis/reference_results.example.csv`）后执行：
 
 ```bash
 python -m aegis.report \
     --output-dir outputs \
     --report-dir outputs/reports \
-    --reference-csv path/to/baseline_dense_ae_results.csv \
+    --reference-csv path/to/dense_ae_results.csv \
     --reference-csv path/to/stgram_mfn_results.csv
 ```
 
-Reference CSVs must have columns: `dataset, method, machine_type, auc, pauc, f1`.
+参考 CSV 需包含列：`dataset, method, machine_type, auc, pauc, f1`  
+结果写入 `outputs/reports/comparison.csv` 和 `ablation.csv`。
 
 ---
 
-## 7  Reproducing from GitHub
+## 从 GitHub 完整复现
 
 ```bash
-git clone --recurse-submodules git@github.com:<user>/AEGIS.git
+git clone --recurse-submodules git@github.com:<你的用户名>/AEGIS.git
 cd AEGIS
 pip install -r aegis/requirements.txt
-# Place datasets as described in section 2
+# 按第三节说明放置数据集
 bash run_all.sh --device cuda
 ```
 
 ---
 
-## 8  Citation / acknowledgements
+## 致谢
 
-This repository builds on:
+本仓库在以下开源项目基础上构建（代码保持原样，不做任何修改）：
 
-- **DCASE2023 Task 2 Baseline AE** (NTT Media Intelligence Laboratories):  
-  `dcase2023_task2_baseline_ae/` — kept unmodified.
-- **STgram-MFN** (Liu et al., 2022):  
-  `STgram-MFN/` — kept unmodified.
+- **DCASE2023 Task 2 Baseline AE**（NTT Media Intelligence Laboratories）：`dcase2023_task2_baseline_ae/`
+- **STgram-MFN**（Liu et al., 2022）：`STgram-MFN/`
