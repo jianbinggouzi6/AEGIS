@@ -1,0 +1,67 @@
+# ============================================================
+# Experiment 1: Conv-AE baseline  (Dataset A — DCASE2020 T2)
+# Ablation table row 1: Conv-AE only
+# ============================================================
+
+experiment_name: "exp1_convae"
+dataset: "a"          # a = DCASE2020T2
+
+baseline_root: "../dcase2023_task2_baseline_ae"
+output_dir:    "../outputs/exp1_convae"
+
+seed:   13711
+device: "auto"
+
+machine_types:
+  - fan
+  - pump
+  - slider
+  - valve
+  - ToyCar
+  - ToyConveyor
+
+# ------ Feature parameters (must match baseline for fair comparison) ------
+feature:
+  n_mels:           128
+  frames:           64
+  frame_hop_length: 8
+  n_fft:            1024
+  hop_length:       512
+  power:            2.0
+  fmin:             0.0
+  fmax:             null
+  win_length:       null
+
+# ------ Model switches -------------------------------------------------------
+model:
+  conv_ae:            true    # always on
+  freq_attention:     false   # Row 1: off
+  classifier_fusion:  false   # Row 1: off
+  base_channels:      16
+  latent_channels:    64
+
+# ------ Classifier (inactive here, kept for schema consistency) --------------
+classifier:
+  num_classes: 0        # 0 = auto-detect from data
+  loss_type:   "ce"     # "ce" | "arcface"
+  lambda_cls:  0.2      # λ — weight of CE loss in joint training
+
+# ------ Score fusion (inactive here) -----------------------------------------
+fusion:
+  weight: 0.3           # w — fused = z_recon + w * z_cls
+
+# ------ Training hyperparameters ---------------------------------------------
+training:
+  epochs:            50
+  batch_size:        128
+  learning_rate:     0.001
+  weight_decay:      0.00001
+  validation_split:  0.1
+  staged:            false   # if true: AE-only phase then CLF-only phase
+  ae_epochs:         30      # (staged) AE-only phase length
+  clf_epochs:        20      # (staged) classifier fine-tuning phase length
+
+# ------ Evaluation -----------------------------------------------------------
+evaluation:
+  max_fpr:             0.1   # pAUC FPR upper bound (DCASE standard)
+  threshold_quantile:  0.9   # decision threshold = this quantile of train scores

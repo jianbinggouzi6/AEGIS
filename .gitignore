@@ -1,16 +1,73 @@
+# ============================================================
+# AEGIS .gitignore
+# The repo only tracks: aegis/ source, configs/, run_all.sh,
+# README.md, CLAUDE.md, CODEX.md.
+# Everything below is excluded.
+# ============================================================
+
+# ---------- Cloned baseline repos (tracked as submodules, not content) ------
+dcase2023_task2_baseline_ae/
+STgram-MFN/
+
+# ---------- Datasets and audio files ----------------------------------------
+data/
+dev_data/
+eval_data/
+*.wav
+*.flac
+*.mp3
+
+# ---------- Model checkpoints and large results -----------------------------
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.pickle
+outputs/
+outputs_b/
+**/model.pt
+**/anomaly_score_*.csv
+
+# ---------- LaTeX / PDF artifacts -------------------------------------------
+*.aux
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.synctex.gz
+*.toc
+*.pdf
+
+# ---------- Python build artefacts ------------------------------------------
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# ---------- Test / coverage artefacts ----------------------------------------
 .pytest_cache/
 .coverage
+htmlcov/
 
-# AEGIS runtime artifacts
-aegis/outputs/
-aegis/checkpoints/
-aegis/*.log
+# ---------- Conda / venv environments ----------------------------------------
+envs/
+venv/
+.venv/
+*.conda
+*.env
+conda-meta/
 
-# IDE / OS files
+# ---------- IDE and OS files -------------------------------------------------
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
-
+*.swp
+*.swo

@@ -1,0 +1,68 @@
+# ============================================================
+# Experiment 2: Conv-AE + Frequency Attention  (Dataset B — DCASE2024 T2)
+# Ablation table row 2: +freq_attention (cumulative over row 1)
+# ============================================================
+
+experiment_name: "exp2_convae_freqattn"
+dataset: "b"          # b = DCASE2024T2
+
+baseline_root: "../dcase2023_task2_baseline_ae"
+output_dir:    "../outputs_b/exp2_convae_freqattn"
+
+seed:   13711
+device: "auto"
+
+machine_types:
+  - bearing
+  - fan
+  - gearbox
+  - slider
+  - valve
+  - ToyCar
+  - ToyTrain
+
+# ------ Feature parameters (must match baseline for fair comparison) ------
+feature:
+  n_mels:           128
+  frames:           64
+  frame_hop_length: 8
+  n_fft:            1024
+  hop_length:       512
+  power:            2.0
+  fmin:             0.0
+  fmax:             null
+  win_length:       null
+
+# ------ Model switches -------------------------------------------------------
+model:
+  conv_ae:            true
+  freq_attention:     true    # Row 2: ON
+  classifier_fusion:  false
+  base_channels:      16
+  latent_channels:    64
+
+# ------ Classifier (inactive here) -------------------------------------------
+classifier:
+  num_classes: 0
+  loss_type:   "ce"
+  lambda_cls:  0.2
+
+# ------ Score fusion (inactive here) -----------------------------------------
+fusion:
+  weight: 0.3
+
+# ------ Training hyperparameters (identical across all rows) -----------------
+training:
+  epochs:            50
+  batch_size:        128
+  learning_rate:     0.001
+  weight_decay:      0.00001
+  validation_split:  0.1
+  staged:            false
+  ae_epochs:         30
+  clf_epochs:        20
+
+# ------ Evaluation -----------------------------------------------------------
+evaluation:
+  max_fpr:             0.1
+  threshold_quantile:  0.9
