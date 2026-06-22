@@ -27,12 +27,12 @@ def _write_csv(path: Path, rows: list[dict[str, Any]], fields: list[str]) -> Non
 
 def collect_aegis(output_dir: str | Path) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
-    for path in sorted(Path(output_dir).glob("DCASE*T2/stage*/summary.csv")):
-        stage = path.parent.name.removeprefix("stage")
+    for path in sorted(Path(output_dir).glob("DCASE*T2/*/summary.csv")):
         for row in _read_csv(path):
             if row["machine_type"] == "arithmetic mean":
                 continue
-            rows.append({**row, "method": f"AEGIS-stage{stage}"})
+            experiment = row.get("experiment") or path.parent.name
+            rows.append({**row, "method": f"AEGIS-{experiment}"})
     return rows
 
 
@@ -86,7 +86,7 @@ def build_reports(
                 row[f"{dataset}_{metric}"] = values.get(metric, "")
         comparison_rows.append(row)
 
-    ablation_fields = ["dataset", "stage", *METRICS]
+    ablation_fields = ["dataset", "experiment", *METRICS]
     ablation_rows: list[dict[str, Any]] = []
     for (dataset, method), values in sorted(averages.items()):
         if not method.startswith("AEGIS-stage"):
@@ -94,7 +94,7 @@ def build_reports(
         ablation_rows.append(
             {
                 "dataset": dataset,
-                "stage": method.removeprefix("AEGIS-stage"),
+                "experiment": method.removeprefix("AEGIS-"),
                 **values,
             }
         )
@@ -124,4 +124,3 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-

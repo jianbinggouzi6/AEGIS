@@ -77,6 +77,8 @@ class AEGISModel(nn.Module):
         num_classes: int = 1,
         base_channels: int = 16,
         latent_channels: int = 64,
+        use_frequency_attention: bool | None = None,
+        use_ssl_head: bool | None = None,
     ) -> None:
         super().__init__()
         if stage not in (1, 2, 3):
@@ -86,8 +88,12 @@ class AEGISModel(nn.Module):
 
         self.stage = stage
         self.num_classes = num_classes
+        self.use_frequency_attention = (
+            stage >= 2 if use_frequency_attention is None else use_frequency_attention
+        )
+        self.use_ssl_head = stage >= 3 if use_ssl_head is None else use_ssl_head
         first_encoder_layers: list[nn.Module] = [ConvBlock(1, base_channels)]
-        if stage >= 2:
+        if self.use_frequency_attention:
             first_encoder_layers.append(FrequencyAxisAttention())
         self.encoder = nn.Sequential(
             *first_encoder_layers,
@@ -100,9 +106,9 @@ class AEGISModel(nn.Module):
             nn.ConvTranspose2d(base_channels, 1, kernel_size=4, stride=2, padding=1),
         )
         self.classifier = None
-        if stage >= 3:
+        if self.use_ssl_head:
             if num_classes < 2:
-                raise ValueError("stage 3 needs at least two self-supervised classes")
+                raise ValueError("the self-supervised head needs at least two classes")
             self.classifier = nn.Sequential(
                 nn.AdaptiveAvgPool2d(1),
                 nn.Flatten(),

@@ -1,0 +1,14 @@
+extends: ../config.yaml
+
+# Cumulative stage: Conv-AE + frequency attention + SSL classification/fusion.
+stage: 3
+experiment_name: 03_stage3_full_aegis
+
+model:
+  use_frequency_attention: true
+  use_ssl_head: true
+
+self_supervised:
+  loss_weight: 0.2
+  fusion_weight: 0.3
+

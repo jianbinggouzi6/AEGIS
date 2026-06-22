@@ -103,7 +103,7 @@ class Trainer:
         return views, targets
 
     def _losses(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if self.model.stage < 3:
+        if not self.model.use_ssl_head:
             reconstruction, _ = self.model(images)
             reconstruction_loss = F.mse_loss(reconstruction, images)
             zero = reconstruction_loss.new_zeros(())
@@ -175,7 +175,7 @@ class Trainer:
                 dim=(1, 2, 3)
             )
             reconstruction_scores.extend(per_window.cpu().tolist())
-            if self.model.stage >= 3:
+            if self.model.use_ssl_head:
                 views, targets = self._ssl_views(images)
                 _, logits = self.model(views)
                 if logits is None:
@@ -186,7 +186,7 @@ class Trainer:
         if not reconstruction_scores:
             raise RuntimeError("calibration loader produced no samples")
         values = np.asarray(reconstruction_scores, dtype=np.float64)
-        if self.model.stage < 3:
+        if not self.model.use_ssl_head:
             return ScoreCalibration(
                 threshold=float(np.quantile(values, quantile)),
                 mean=float(values.mean()),
@@ -231,7 +231,7 @@ class Trainer:
             reconstruction, _ = self.model(images)
             reconstruction_score = F.mse_loss(reconstruction, images).item()
             classification_score = 0.0
-            if self.model.stage >= 3:
+            if self.model.use_ssl_head:
                 views, targets = self._ssl_views(images)
                 _, logits = self.model(views)
                 if logits is None:
@@ -320,7 +320,8 @@ def run_machine(
         float(evaluation["threshold_quantile"]),
         max_train_batches,
     )
-    run_dir = Path(config["output_dir"]) / dataset_name / f"stage{stage}" / machine_type
+    experiment_name = str(config.get("experiment_name", f"stage{stage}"))
+    run_dir = Path(config["output_dir"]) / dataset_name / experiment_name / machine_type
     run_dir.mkdir(parents=True, exist_ok=True)
     checkpoint = {
         "model_state": model.state_dict(),
@@ -328,6 +329,7 @@ def run_machine(
         "dataset": dataset_name,
         "machine_type": machine_type,
         "num_classes": model.num_classes,
+        "experiment_name": experiment_name,
         "feature": config["feature"],
         "model": config["model"],
         "calibration": calibration.__dict__,
@@ -369,6 +371,7 @@ def run_machine(
         "dataset": dataset_name,
         "machine_type": machine_type,
         "stage": stage,
+        "experiment": experiment_name,
         **overall,
     }
     _write_csv(run_dir / "summary.csv", [summary])

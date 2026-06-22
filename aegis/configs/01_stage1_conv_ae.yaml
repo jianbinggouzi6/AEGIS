@@ -1,0 +1,12 @@
+extends: ../config.yaml
+
+stage: 1
+experiment_name: 01_stage1_conv_ae
+
+model:
+  use_frequency_attention: false
+  use_ssl_head: false
+
+self_supervised:
+  fusion_weight: 0.0
+

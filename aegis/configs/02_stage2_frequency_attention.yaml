@@ -1,0 +1,12 @@
+extends: ../config.yaml
+
+stage: 2
+experiment_name: 02_stage2_frequency_attention
+
+model:
+  use_frequency_attention: true
+  use_ssl_head: false
+
+self_supervised:
+  fusion_weight: 0.0
+

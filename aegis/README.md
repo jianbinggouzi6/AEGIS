@@ -54,6 +54,20 @@ python -m aegis.run --dataset DCASE2020T2 --stage 3 \
   --machine-types fan --epochs 1 --max-train-batches 2 --max-test-files 10
 ```
 
+## Ablation configurations
+
+Ready-to-run YAML files are in `aegis/configs/`. They form one cumulative
+ablation chain: Conv-AE, then frequency attention, then SSL score fusion:
+
+```bash
+python -m aegis.run --config aegis/configs/01_stage1_conv_ae.yaml --dataset DCASE2020T2
+python -m aegis.run --config aegis/configs/02_stage2_frequency_attention.yaml --dataset DCASE2020T2
+python -m aegis.run --config aegis/configs/03_stage3_full_aegis.yaml --dataset DCASE2020T2
+```
+
+Each file inherits common settings from `aegis/config.yaml`; its experiment
+name also isolates checkpoints and results from the other runs.
+
 ## Comparison and ablation tables
 
 After running all stages, normalize the untouched Dense-AE and STgram-MFN
@@ -65,9 +79,9 @@ python -m aegis.report --reference-csv path/to/baseline_results.csv
 ```
 
 This writes `comparison.csv` (methods across both datasets) and `ablation.csv`
-(stages 1–3) under `aegis/outputs/reports/`.
+(all configured variants) under `aegis/outputs/reports/`.
 
-Outputs are written below `aegis/outputs/<dataset>/stage1/`, including model
+Outputs are written below `aegis/outputs/<dataset>/<experiment_name>/`, including model
 checkpoints, per-file anomaly scores, section metrics, and a cross-machine
 summary. Use `--machine-types` to select a fixed six-machine subset for an
 experiment; the official DCASE2024 development map currently contains seven.

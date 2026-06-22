@@ -46,6 +46,19 @@ dcase2023_task2_baseline_ae/data/dcase2024t2/dev_data/raw/
 `aegis/config.yaml`。官方 DCASE2024 开发集映射包含 7 类机器；如果实验必须固定为 6 类，
 请使用 `--machine-types` 显式传入选定子集，避免代码静默丢弃某一类。
 
+### 消融实验配置
+
+独立配置位于 `aegis/configs/`：
+
+| 配置 | 累加内容 | 频率注意力 | 自监督分类头与融合 |
+| --- | --- | :---: | :---: |
+| `01_stage1_conv_ae.yaml` | Conv-AE | × | × |
+| `02_stage2_frequency_attention.yaml` | 阶段 1 + 频率注意力 | ✓ | × |
+| `03_stage3_full_aegis.yaml` | 阶段 2 + 自监督分类与分数融合 | ✓ | ✓ |
+
+每个文件继承 `aegis/config.yaml` 的公共训练参数，只覆盖该实验需要改变的组件，输出目录
+也按实验名隔离。
+
 ## 分阶段运行
 
 先用一个机器类型做真实数据 smoke test：
@@ -58,16 +71,14 @@ python -m aegis.run --dataset DCASE2020T2 --stage 1 \
 确认数据链路后运行完整实验：
 
 ```bash
-python -m aegis.run --dataset DCASE2020T2 --stage 1
-python -m aegis.run --dataset DCASE2020T2 --stage 2
-python -m aegis.run --dataset DCASE2020T2 --stage 3
-
-python -m aegis.run --dataset DCASE2024T2 --stage 1
-python -m aegis.run --dataset DCASE2024T2 --stage 2
-python -m aegis.run --dataset DCASE2024T2 --stage 3
+python -m aegis.run --config aegis/configs/01_stage1_conv_ae.yaml --dataset DCASE2020T2
+python -m aegis.run --config aegis/configs/02_stage2_frequency_attention.yaml --dataset DCASE2020T2
+python -m aegis.run --config aegis/configs/03_stage3_full_aegis.yaml --dataset DCASE2020T2
 ```
 
-输出位于 `aegis/outputs/<dataset>/stage<stage>/`，包括 checkpoint、逐文件异常分数、
+将最后一个参数换成 `--dataset DCASE2024T2` 即可跑另一数据集。
+
+输出位于 `aegis/outputs/<dataset>/<experiment_name>/`，包括 checkpoint、逐文件异常分数、
 section 指标和机器类型均值。
 
 ## 测试与最终报表
