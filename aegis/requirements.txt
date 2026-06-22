@@ -1,0 +1,4 @@
+-r ../dcase2023_task2_baseline_ae/requirements.txt
+scikit-learn>=1.3
+soundfile>=0.12
+

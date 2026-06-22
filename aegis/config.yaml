@@ -1,0 +1,42 @@
+# Paths are resolved relative to this file.
+baseline_root: ../dcase2023_task2_baseline_ae
+output_dir: outputs
+
+seed: 13711
+device: auto
+
+feature:
+  n_mels: 128
+  frames: 64
+  frame_hop_length: 8
+  n_fft: 1024
+  hop_length: 512
+  power: 2.0
+  fmin: 0.0
+  fmax: null
+  win_length: null
+
+model:
+  base_channels: 16
+  latent_channels: 64
+
+training:
+  batch_size: 128
+  epochs: 50
+  learning_rate: 0.001
+  weight_decay: 0.00001
+  validation_split: 0.1
+  num_workers: 0
+
+evaluation:
+  max_fpr: 0.1
+  threshold_quantile: 0.9
+
+datasets:
+  DCASE2020T2:
+    machine_types: [fan, pump, slider, valve, ToyCar, ToyConveyor]
+  # The official 2024 development set contains seven machine types. Pass
+  # --machine-types to select an exact six-machine experimental subset.
+  DCASE2024T2:
+    machine_types: [bearing, fan, gearbox, slider, valve, ToyCar, ToyTrain]
+

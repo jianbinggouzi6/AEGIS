@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# AEGIS runtime artifacts
+aegis/outputs/
+aegis/checkpoints/
+aegis/*.log
+
+# IDE / OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+

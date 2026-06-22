@@ -1,0 +1,7 @@
+[submodule "dcase2023_task2_baseline_ae"]
+	path = dcase2023_task2_baseline_ae
+	url = https://github.com/nttcslab/dcase2023_task2_baseline_ae.git
+[submodule "STgram-MFN"]
+	path = STgram-MFN
+	url = https://github.com/liuyoude/STgram-MFN.git
+
