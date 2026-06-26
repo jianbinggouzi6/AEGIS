@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AEGIS Industrial Monitor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>🚀 AEGIS Industrial Sound Monitoring</h1>
+
+    <!-- 上传 -->
+    <div class="card">
+        <h2>📁 Upload Audio</h2>
+        <input type="file" id="fileInput">
+        <button onclick="uploadFile()">Analyze</button>
+    </div>
+
+    <!-- 结果 -->
+    <div class="card">
+        <h2>📊 Result</h2>
+        <p id="filename">File: -</p>
+        <p id="score">Score: -</p>
+        <p id="level">Level: -</p>
+        <p id="advice">Advice: -</p>
+    </div>
+
+    <!-- 风险指示灯 -->
+    <div class="card">
+        <h2>🚦 Risk Level</h2>
+        <div id="lamp" class="lamp"></div>
+    </div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

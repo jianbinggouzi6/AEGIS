@@ -1,0 +1,40 @@
+body {
+    font-family: Arial;
+    background: #0f172a;
+    color: white;
+    margin: 0;
+}
+
+.container {
+    width: 700px;
+    margin: auto;
+    padding: 20px;
+}
+
+h1 {
+    text-align: center;
+}
+
+.card {
+    background: #1e293b;
+    padding: 20px;
+    margin-top: 20px;
+    border-radius: 12px;
+}
+
+button {
+    padding: 10px 20px;
+    margin-top: 10px;
+    cursor: pointer;
+    background: #38bdf8;
+    border: none;
+    border-radius: 8px;
+}
+
+.lamp {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: gray;
+    margin-top: 10px;
+}
